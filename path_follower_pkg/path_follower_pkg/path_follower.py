@@ -2,7 +2,7 @@
 
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import TwistStamped  # <- CHANGE
 from nav_msgs.msg import Odometry
 from pathlib import Path
 import math
@@ -12,7 +12,8 @@ class PathFollower(Node):
         super().__init__('path_follower')
 
         # Publisher
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.cmd_vel_pub = self.create_publisher(TwistStamped, '/tb4_1/cmd_vel', 10)  # <- CHANGE
+
         # Subscriber to real odometry
         self.create_subscription(Odometry, '/odom', self.odom_callback, 10)
 
@@ -70,8 +71,12 @@ class PathFollower(Node):
     def control_loop(self):
         # Finished all waypoints
         if self.current_index >= len(self.waypoints):
-            twist = Twist()
-            self.cmd_vel_pub.publish(twist)
+            twist_stamped = TwistStamped()
+            twist_stamped.header.stamp = self.get_clock().now().to_msg()
+            twist_stamped.header.frame_id = 'base_link'  # <- typical for cmd_vel
+            twist_stamped.twist.linear.x = 0.0
+            twist_stamped.twist.angular.z = 0.0
+            self.cmd_vel_pub.publish(twist_stamped)
             self.get_logger().info('All waypoints reached!')
             self.timer.cancel()
             return
@@ -85,7 +90,9 @@ class PathFollower(Node):
         desired_heading = math.atan2(dy, dx)
         angle_error = self.normalize_angle(desired_heading - self.current_theta)
 
-        twist = Twist()
+        twist_stamped = TwistStamped()
+        twist_stamped.header.stamp = self.get_clock().now().to_msg()
+        twist_stamped.header.frame_id = 'base_link'
 
         if distance_error < self.distance_threshold:
             # Waypoint reached
@@ -95,14 +102,14 @@ class PathFollower(Node):
 
         if abs(angle_error) > self.angle_threshold:
             # Rotate in place
-            twist.linear.x = 0.0
-            twist.angular.z = self.angular_speed if angle_error > 0 else -self.angular_speed
+            twist_stamped.twist.linear.x = 0.0
+            twist_stamped.twist.angular.z = self.angular_speed if angle_error > 0 else -self.angular_speed
         else:
             # Move forward
-            twist.linear.x = self.linear_speed
-            twist.angular.z = 0.0
+            twist_stamped.twist.linear.x = self.linear_speed
+            twist_stamped.twist.angular.z = 0.0
 
-        self.cmd_vel_pub.publish(twist)
+        self.cmd_vel_pub.publish(twist_stamped)
 
 def main(args=None):
     rclpy.init(args=args)
@@ -113,4 +120,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
